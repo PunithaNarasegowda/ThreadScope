@@ -611,16 +611,6 @@ Try answering these without looking at the notes:
 
 ------------------------------------------------------------------------
 
-## 14. What comes next?
-
-Day 3 will build on these foundations:
-
--   Deadlock prevention, avoidance, and detection.
--   `std::unique_lock` in more detail.
--   `std::lock()` and safely acquiring multiple mutexes.
--   Mutex vs. semaphore.
--   Introduction to condition variables and thread coordination.
-
 **Revision reminder:** For every multithreading example, ask yourself: -
 Which data is shared? - Which thread currently owns the mutex? - Which
 thread is waiting? - What is the critical section? - Can the threads
