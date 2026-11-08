@@ -4,27 +4,50 @@ const { spawn } = require("child_process");
 const readline = require("readline");
 const path = require("path");
 
-// Create WebSocket server
 const wss = new WebSocket.Server({
     port: 8080
 });
 
 console.log("ThreadScope WebSocket Server running on port 8080");
 
-// Track engine execution
-let engineStarted = false;
-let childProcess = null;
+// Store all generated events
+const eventHistory = [];
 
-// Broadcast events to all connected clients
+// Prevent multiple C++ engine executions
+let engineStarted = false;
+
+// Broadcast and save events
+
 function broadcast(data) {
+
+    eventHistory.push(data);
+
+    console.log("Sending event:", data);
+    console.log("Connected clients:", wss.clients.size);
+
     wss.clients.forEach((client) => {
+
+        console.log("Client readyState:", client.readyState);
+
         if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify(data));
+
+            client.send(JSON.stringify(data), (error) => {
+
+                if (error) {
+                    console.error("Send failed:", error);
+                } else {
+                    console.log("Event delivered successfully!");
+                }
+
+            });
+
         }
+
     });
+
 }
 
-// Start C++ engine only once
+// Start C++ engine
 function startEngine() {
 
     if (engineStarted) {
@@ -43,19 +66,19 @@ function startEngine() {
 
     console.log("Starting C++ Engine...");
 
-    childProcess = spawn(executablePath, [], {
+    const child = spawn(executablePath, [], {
         cwd: path.dirname(executablePath)
     });
 
-    // Read C++ output line by line
     const rl = readline.createInterface({
-        input: childProcess.stdout
+        input: child.stdout
     });
 
-    // Process incoming events
+    // Receive events from C++
     rl.on("line", (line) => {
 
         try {
+
             const event = JSON.parse(line);
 
             console.log("Broadcasting:", event);
@@ -63,24 +86,30 @@ function startEngine() {
             broadcast(event);
 
         } catch (error) {
+
             console.error("Invalid JSON:", line);
+
         }
 
     });
 
     // Capture C++ errors
-    childProcess.stderr.on("data", (data) => {
+    child.stderr.on("data", (data) => {
         console.error("C++ ERROR:", data.toString());
     });
 
     // Handle startup errors
-    childProcess.on("error", (error) => {
+    child.on("error", (error) => {
         console.error("Failed to start C++:", error.message);
-        engineStarted = false;
+
+        broadcast({
+            type: "ENGINE_EXIT",
+            code: -1
+        });
     });
 
-    // Detect process completion
-    childProcess.on("close", (code) => {
+    // Detect completion
+    child.on("close", (code) => {
 
         console.log("C++ Engine exited:", code);
 
@@ -90,14 +119,24 @@ function startEngine() {
         });
 
     });
+
 }
 
-// Handle WebSocket connections
+// Handle React connections
 wss.on("connection", (socket) => {
 
     console.log("React/Client connected!");
 
-    // Start engine only on the first connection
+    // Replay previously generated events
+    console.log("Sending event history:", eventHistory.length);
+
+    eventHistory.forEach((event) => {
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(event));
+        }
+    });
+
+    // Start engine only if it hasn't started
     startEngine();
 
     socket.on("message", (message) => {
@@ -109,4 +148,3 @@ wss.on("connection", (socket) => {
     });
 
 });
-
